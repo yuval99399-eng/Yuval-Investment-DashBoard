@@ -10,9 +10,9 @@ st.set_page_config(page_title="S&P 500 Survivors Tracker", layout="wide")
 st.markdown("""
     <style>
     .main { direction: rtl; text-align: right; }
-    div.stButton > button:first-child { direction: rtl; }
+    div.stSelectbox > label { direction: rtl; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("📊 מעקב חברות ה-S&P 500 - תצוגה גרפית")
 
