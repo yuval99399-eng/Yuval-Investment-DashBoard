@@ -1,11 +1,16 @@
-# התקנת הספרייה למשיכת נתונים (חובה בקולאב)
-!pip install yfinance
-
+import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
 
-# רשימת 53 החברות ששרדו במדד מ-1957 (או גלגוליהן המודרניים)
+# הגדרות דף
+st.set_page_config(page_title="S&P 500 Survivors Tracker", layout="wide")
+
+st.title("📊 מעקב חברות ה-S&P 500 המקוריות")
+st.markdown("""
+אפליקציה זו עוקבת אחרי 53 החברות ששרדו במדד מאז הקמתו ב-1957 ובוחנת את המומנטום שלהן ביחס לממוצע הנע ל-150 יום.
+""")
+
+# רשימת הטיקרים
 survivors = [
     'MMM', 'ABT', 'ADM', 'MO', 'AEP', 'T', 'BA', 'BMY', 'CPB', 'CAT', 'CVX', 'KO', 'CL', 'COP',
     'ED', 'CSX', 'CVS', 'DE', 'DTE', 'ETN', 'EIX', 'ETR', 'XOM', 'F', 'GE', 'GD', 'GIS',
@@ -13,43 +18,45 @@ survivors = [
     'MAR', 'MRK', 'MET', 'NSC', 'NUE', 'OXY', 'PEP', 'PFE', 'PPG', 'PG', 'SLB', 'SO', 'SYY'
 ]
 
-print("מתחיל במשיכת נתונים וניתוח טכני... זה עשוי לקחת רגע.")
+@st.cache_data(ttl=3600)  # שמירת נתונים בזיכרון לשעה כדי למנוע טעינות מיותרות
+def get_data():
+    data = yf.download(survivors, period="1y", interval="1d")['Close']
+    results = []
+    for ticker in survivors:
+        if ticker in data.columns:
+            series = data[ticker].dropna()
+            if len(series) >= 150:
+                curr = series.iloc[-1]
+                ma = series.rolling(window=150).mean().iloc[-1]
+                results.append({
+                    "Ticker": ticker,
+                    "Price": round(curr, 2),
+                    "MA150": round(ma, 2),
+                    "Diff %": round(((curr - ma) / ma) * 100, 2),
+                    "Status": "✅ Above" if curr > ma else "❌ Below"
+                })
+    return pd.DataFrame(results)
 
-# משיכת נתוני סגירה (Close) לשנה האחרונה עבור כל הרשימה
-data = yf.download(survivors, period="1y", interval="1d", progress=True)['Close']
+# טעינת הנתונים
+with st.spinner('מושך נתונים מ-Yahoo Finance...'):
+    df = get_data()
 
-results = []
+# יצירת מטריקות (Metrics) בצורה יפה
+col1, col2, col3 = st.columns(3)
+col1.metric("סה\"כ חברות", len(df))
+col2.metric("מעל הממוצע", len(df[df['Status'] == "✅ Above"]), delta_color="normal")
+col3.metric("מתחת לממוצע", len(df[df['Status'] == "❌ Below"]), delta_color="inverse")
 
-for ticker in survivors:
-    if ticker in data.columns:
-        # ניקוי ערכים חסרים וחישוב ממוצע נע
-        series = data[ticker].dropna()
-        if len(series) >= 150:
-            current_price = series.iloc[-1]
-            ma150 = series.rolling(window=150).mean().iloc[-1]
-            diff_percent = ((current_price - ma150) / ma150) * 100
-            
-            results.append({
-                'Ticker': ticker,
-                'Price': round(current_price, 2),
-                'MA150': round(ma150, 2),
-                'Diff %': round(diff_percent, 2),
-                'Status': 'Above' if current_price > ma150 else 'Below'
-            })
+# פיצול לתצוגה בטאבים
+tab1, tab2 = st.tabs(["🟢 מעל הממוצע", "🔴 מתחת לממוצע"])
 
-# יצירת DataFrame לסיכום התוצאות
-df = pd.DataFrame(results)
+with tab1:
+    st.subheader("מניות במומנטום חיובי")
+    st.dataframe(df[df['Status'] == "✅ Above"].sort_values("Diff %", ascending=False), use_container_width=True)
 
-# הפרדה לשתי קבוצות
-above = df[df['Status'] == 'Above'].sort_values(by='Diff %', ascending=False)
-below = df[df['Status'] == 'Below'].sort_values(by='Diff %', ascending=True)
+with tab2:
+    st.subheader("מניות במומנטום שלילי")
+    st.dataframe(df[df['Status'] == "❌ Below"].sort_values("Diff %", ascending=True), use_container_width=True)
 
-print("\n" + "="*50)
-print(f"סיכום: {len(above)} חברות מעל הממוצע, {len(below)} חברות מתחת לממוצע.")
-print("="*50)
-
-print("\n--- חברות שנסחרות מעל ממוצע 150 (החזקות ביותר) ---")
-print(above[['Ticker', 'Price', 'MA150', 'Diff %']].head(10))
-
-print("\n--- חברות שנסחרות מתחת לממוצע 150 (החלשות ביותר) ---")
-print(below[['Ticker', 'Price', 'MA150', 'Diff %']].head(10))
+st.divider()
+st.caption("הנתונים נמשכים בזמן אמת באמצעות yfinance.")
